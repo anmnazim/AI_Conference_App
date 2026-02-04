@@ -1,0 +1,42 @@
+name: myweb
+description: Flutter web admin panel project
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Firebase (Web compatible & null-safe)
+  firebase_core: ^2.16.0
+  firebase_auth: ^4.16.0
+  cloud_firestore: ^4.7.1
+  firebase_storage: ^11.6.0
+
+  # Utilities (null-safe)
+  file_picker: ^8.0.0
+  intl: ^0.19.0
+  archive: ^3.4.0
+  xml: ^6.5.0
+  url_launcher: ^6.2.6
+  web: ^0.1.0
+  universal_html: ^2.0.10
+  pdf: ^3.11.3
+  file_saver: ^0.1.0
+
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

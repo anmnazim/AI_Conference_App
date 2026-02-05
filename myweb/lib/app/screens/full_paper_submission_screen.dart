@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -6,6 +7,7 @@ import '../../models/author.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/storage_service.dart';
+import '../widgets/parallax_background.dart';
 import 'home_screen.dart';
 
 class FullPaperSubmissionScreen extends StatefulWidget {
@@ -15,7 +17,7 @@ class FullPaperSubmissionScreen extends StatefulWidget {
   State<FullPaperSubmissionScreen> createState() => _FullPaperSubmissionScreenState();
 }
 
-class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> {
+class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   
@@ -30,9 +32,20 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> {
   
   PlatformFile? _pickedFile;
   bool _uploading = false;
+  late AnimationController _animationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..forward();
+  }
 
   @override
   void dispose() {
+    _animationController.dispose();
     _titleController.dispose();
     _mainAuthorNameController.dispose();
     _mainAuthorAffiliationController.dispose();
@@ -166,7 +179,7 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> {
       // Build authors list
       final authors = <Map<String, dynamic>>[];
 
-      // Main author (first in list, marked as main)
+      // Main author
       authors.add(Author(
         name: _mainAuthorNameController.text.trim(),
         affiliation: _mainAuthorAffiliationController.text.trim(),
@@ -225,263 +238,420 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> {
     }
   }
 
-  // ——— UI ———
+  // ——— UI Components ———
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Submit Full Paper'),
+    // Custom Indigo/Violet Dark Theme
+    const primaryIndigo = Color(0xFF6200EA); // Deep Indigo
+    const accentViolet = Color(0xFF7C4DFF); // Violet
+    
+    final darkTheme = ThemeData.dark().copyWith(
+      colorScheme: const ColorScheme.dark(
+        primary: accentViolet,
+        secondary: primaryIndigo, 
+        surface: Color(0xFF0F0E1C), // Deep dark slightly purple surface
+        error: Color(0xFFFF5252),
       ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Paper Title
-              _buildSectionHeader('Paper Information'),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _titleController,
-                decoration: const InputDecoration(
-                  labelText: 'Paper Title *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.title),
-                ),
-                validator: (v) => _validateRequired(v, 'Title'),
-              ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.black.withOpacity(0.2),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: accentViolet, width: 1.5),
+        ),
+        labelStyle: TextStyle(color: Colors.white70),
+        prefixIconColor: Colors.white60,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      ),
+      textTheme: const TextTheme(
+        titleLarge: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
+        bodyLarge: TextStyle(color: Colors.white),
+      ),
+    );
 
-              const SizedBox(height: 24),
+    return Theme(
+      data: darkTheme,
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          title: const Text('Full Paper Submission'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: ParallaxBackground(
+          child: SafeArea(
+              child: ScrollConfiguration(
+                behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                child: Center(
+                  child: SizedBox(
+                     // Taking half of the horizontal space
+                    width: MediaQuery.of(context).size.width * 0.5,
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Form(
+                        key: _formKey,
+                        child: FadeTransition(
+                          opacity: _animationController,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const SizedBox(height: 10),
+                              Center(
+                                child: Text(
+                                  'Submit Your Research',
+                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                               Center(
+                                child: Text(
+                                  'Share your findings with the world.',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: Colors.white60,
+                                      ),
+                                ),
+                              ),
+                              const SizedBox(height: 40),
 
-              // Main Author Section
-              _buildSectionHeader('Main Author (Required)'),
-              const SizedBox(height: 8),
-              _buildMainAuthorForm(),
+                              // Paper Info
+                              _buildGlassSection(
+                                title: 'Paper Information',
+                                icon: Icons.article_rounded,
+                                children: [
+                                  TextFormField(
+                                    controller: _titleController,
+                                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Paper Title',
+                                      prefixIcon: Icon(Icons.title_rounded),
+                                    ),
+                                    validator: (v) => _validateRequired(v, 'Title'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
 
-              const SizedBox(height: 24),
+                              // Main Author
+                              _buildGlassSection(
+                                title: 'Main Author',
+                                icon: Icons.person_rounded,
+                                children: [
+                                  _buildAuthorInputs(
+                                    nameCtrl: _mainAuthorNameController,
+                                    affCtrl: _mainAuthorAffiliationController,
+                                    emailCtrl: _mainAuthorEmailController,
+                                    phoneCtrl: _mainAuthorPhoneController,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
 
-              // Co-Authors Section
-              _buildSectionHeader('Co-Authors (Optional, max 5)'),
-              const SizedBox(height: 8),
-              ..._buildCoAuthorForms(),
-              if (_coAuthors.length < 5)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: OutlinedButton.icon(
-                    onPressed: _addCoAuthor,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add Co-Author'),
+                              // Co-Authors
+                              Column(
+                                children: [
+                                  ..._coAuthors.asMap().entries.map((entry) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 24),
+                                      child: _buildGlassSection(
+                                        title: 'Co-Author ${entry.key + 1}',
+                                        icon: Icons.group_add_rounded,
+                                        onRemove: () => _removeCoAuthor(entry.key),
+                                        children: [
+                                          _buildAuthorInputs(
+                                            nameCtrl: entry.value.nameController,
+                                            affCtrl: entry.value.affiliationController,
+                                            emailCtrl: entry.value.emailController,
+                                            phoneCtrl: entry.value.phoneController,
+                                            isOptionalEmailPhone: true,
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ),
+
+                              if (_coAuthors.length < 5)
+                                Center(
+                                  child: ConsumerHoverButton(
+                                    onTap: _addCoAuthor,
+                                    label: 'Add Co-Author',
+                                    icon: Icons.add_circle_outline_rounded,
+                                  ),
+                                ),
+                              
+                              const SizedBox(height: 32),
+
+                              // File Upload
+                              _buildUploadSection(accentViolet),
+
+                              const SizedBox(height: 40),
+
+                              // Submit Button
+                              SizedBox(
+                                height: 56,
+                                child: ElevatedButton(
+                                  onPressed: _uploading ? null : _submit,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: accentViolet,
+                                    foregroundColor: Colors.white,
+                                    shadowColor: accentViolet.withOpacity(0.5),
+                                    elevation: 8,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                  ),
+                                  child: _uploading
+                                      ? const SizedBox(
+                                          height: 24,
+                                          width: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white70,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'SUBMIT PAPER',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 1.2,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(height: 30),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-
-              const SizedBox(height: 24),
-
-              // PDF Upload Section
-              _buildSectionHeader('Paper File'),
-              const SizedBox(height: 8),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      Icon(
-                        _pickedFile != null ? Icons.picture_as_pdf : Icons.upload_file,
-                        size: 48,
-                        color: _pickedFile != null ? Colors.red : Colors.grey,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _pickedFile != null
-                            ? _pickedFile!.name
-                            : 'No file selected',
-                        style: TextStyle(
-                          color: _pickedFile != null ? Colors.black : Colors.grey,
-                        ),
-                      ),
-                      if (_pickedFile != null)
-                        Text(
-                          '${(_pickedFile!.size / 1024 / 1024).toStringAsFixed(2)} MB',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: _uploading ? null : _pickPdf,
-                        icon: const Icon(Icons.attach_file),
-                        label: Text(_pickedFile != null ? 'Change PDF' : 'Select PDF (max 10MB)'),
-                      ),
-                    ],
-                  ),
-                ),
               ),
+            ),
+        ),
+      ),
+    );
+  }
 
-              const SizedBox(height: 32),
-
-              // Submit Button
-              FilledButton(
-                onPressed: _uploading ? null : _submit,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: _uploading
-                    ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
+  Widget _buildGlassSection({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+    VoidCallback? onRemove,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        color: const Color(0xFF1E1B4B).withOpacity(0.4), // Dark Indigo tint
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 20,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7C4DFF).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(icon, color: const Color(0xFF7C4DFF)),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    if (onRemove != null) ...[
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                        onPressed: onRemove,
                       )
-                    : const Text('Submit Paper', style: TextStyle(fontSize: 16)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-    );
-  }
-
-  Widget _buildMainAuthorForm() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextFormField(
-              controller: _mainAuthorNameController,
-              decoration: const InputDecoration(
-                labelText: 'Name *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person),
-              ),
-              validator: (v) => _validateRequired(v, 'Name'),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _mainAuthorAffiliationController,
-              decoration: const InputDecoration(
-                labelText: 'Affiliation *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.business),
-              ),
-              validator: (v) => _validateRequired(v, 'Affiliation'),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _mainAuthorEmailController,
-              decoration: const InputDecoration(
-                labelText: 'Email *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.email),
-              ),
-              keyboardType: TextInputType.emailAddress,
-              validator: _validateEmail,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _mainAuthorPhoneController,
-              decoration: const InputDecoration(
-                labelText: 'Phone *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.phone),
-              ),
-              keyboardType: TextInputType.phone,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[\d\s\-\+\(\)]')),
+                    ]
+                  ],
+                ),
+                const SizedBox(height: 24),
+                ...children,
               ],
-              validator: _validatePhone,
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  List<Widget> _buildCoAuthorForms() {
-    return _coAuthors.asMap().entries.map((entry) {
-      final index = entry.key;
-      final coAuthor = entry.value;
-
-      return Card(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Co-Author ${index + 1}',
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle, color: Colors.red),
-                    onPressed: () => _removeCoAuthor(index),
-                    tooltip: 'Remove',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: coAuthor.nameController,
+  Widget _buildAuthorInputs({
+    required TextEditingController nameCtrl,
+    required TextEditingController affCtrl,
+    required TextEditingController emailCtrl,
+    required TextEditingController phoneCtrl,
+    bool isOptionalEmailPhone = false,
+  }) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: nameCtrl,
+                style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
-                  labelText: 'Name *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
+                  labelText: 'Full Name',
+                  prefixIcon: Icon(Icons.person_outline),
                 ),
                 validator: (v) => _validateRequired(v, 'Name'),
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: coAuthor.affiliationController,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: TextFormField(
+                controller: affCtrl,
+                style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
-                  labelText: 'Affiliation *',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.business),
+                  labelText: 'Affiliation',
+                  prefixIcon: Icon(Icons.business_outlined),
                 ),
                 validator: (v) => _validateRequired(v, 'Affiliation'),
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: coAuthor.emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email (Optional)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.email),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: emailCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: isOptionalEmailPhone ? 'Email (Optional)' : 'Email',
+                  prefixIcon: const Icon(Icons.email_outlined),
                 ),
                 keyboardType: TextInputType.emailAddress,
+                validator: isOptionalEmailPhone
+                    ? (v) => v != null && v.isNotEmpty ? _validateEmail(v) : null
+                    : _validateEmail,
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: coAuthor.phoneController,
-                decoration: const InputDecoration(
-                  labelText: 'Phone (Optional)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.phone),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: TextFormField(
+                controller: phoneCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: isOptionalEmailPhone ? 'Phone (Optional)' : 'Phone',
+                  prefixIcon: const Icon(Icons.phone_outlined),
                 ),
                 keyboardType: TextInputType.phone,
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[\d\s\-\+\(\)]')),
                 ],
+                validator: isOptionalEmailPhone ? null : _validatePhone,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      );
-    }).toList();
+      ],
+    );
+  }
+
+  Widget _buildUploadSection(Color accentColor) {
+    final bool hasFile = _pickedFile != null;
+    return GestureDetector(
+      onTap: _uploading ? null : _pickPdf,
+      child: Container(
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: hasFile 
+              ? accentColor.withOpacity(0.05) 
+              : Colors.black.withOpacity(0.2),
+          border: Border.all(
+            color: hasFile 
+                ? accentColor 
+                : Colors.white.withOpacity(0.15),
+            style: BorderStyle.solid,
+            width: hasFile ? 2 : 1,
+          ), 
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: hasFile 
+                    ? accentColor.withOpacity(0.2) 
+                    : Colors.white.withOpacity(0.05),
+              ),
+              child: Icon(
+                hasFile ? Icons.check_rounded : Icons.cloud_upload_outlined,
+                size: 40,
+                color: hasFile ? accentColor : Colors.white60,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              hasFile ? _pickedFile!.name : 'Click to Upload PDF',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: hasFile ? Colors.white : Colors.white70,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              hasFile
+                  ? '${(_pickedFile!.size / 1024 / 1024).toStringAsFixed(2)} MB'
+                  : 'Maximum file size: 10MB',
+              style: TextStyle(
+                color: hasFile ? accentColor : Colors.white38,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -497,5 +667,67 @@ class _CoAuthorFields {
     affiliationController.dispose();
     emailController.dispose();
     phoneController.dispose();
+  }
+}
+
+class ConsumerHoverButton extends StatefulWidget {
+  final VoidCallback onTap;
+  final String label;
+  final IconData icon;
+
+  const ConsumerHoverButton({
+    super.key,
+    required this.onTap,
+    required this.label,
+    required this.icon,
+  });
+
+  @override
+  State<ConsumerHoverButton> createState() => _ConsumerHoverButtonState();
+}
+
+class _ConsumerHoverButtonState extends State<ConsumerHoverButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    const accentColor = Color(0xFF7C4DFF);
+    
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          decoration: BoxDecoration(
+            color: _isHovered ? Colors.white.withOpacity(0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(
+              color: _isHovered ? accentColor : Colors.white38,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.icon, 
+                color: _isHovered ? accentColor : Colors.white70,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  color: _isHovered ? Colors.white : Colors.white70,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -4,9 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../models/author.dart';
+import '../../models/submission.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
-import '../../services/storage_service.dart';
+import '../../services/cloudinary_service.dart';
 import '../widgets/parallax_background.dart';
 import 'home_screen.dart';
 
@@ -32,6 +33,10 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
   
   PlatformFile? _pickedFile;
   bool _uploading = false;
+  bool _checkingEligibility = true;
+  bool _isEligible = false;
+  String? _acceptedAbstractRef;
+  Submission? _acceptedAbstract;
   late AnimationController _animationController;
 
   @override
@@ -41,6 +46,66 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
       vsync: this,
       duration: const Duration(milliseconds: 800),
     )..forward();
+    _checkEligibility();
+  }
+
+  Future<void> _checkEligibility() async {
+    final uid = AuthService.currentUser?.uid;
+    if (uid == null) {
+      setState(() {
+        _checkingEligibility = false;
+        _isEligible = false;
+      });
+      return;
+    }
+
+    try {
+      final acceptedAbstract = await FirestoreService.getAcceptedAbstract(uid);
+      
+      if (!mounted) return;
+
+      if (acceptedAbstract != null) {
+         _prefillForm(acceptedAbstract);
+      }
+
+      setState(() {
+        _checkingEligibility = false;
+        _isEligible = acceptedAbstract != null;
+        _acceptedAbstractRef = acceptedAbstract?.referenceNumber;
+        _acceptedAbstract = acceptedAbstract;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _checkingEligibility = false;
+        _isEligible = false;
+      });
+    }
+  }
+
+  void _prefillForm(Submission abstract) {
+    _titleController.text = abstract.title;
+
+    final mainAuthor = abstract.mainAuthor;
+    if (mainAuthor != null) {
+      _mainAuthorNameController.text = mainAuthor.name;
+      _mainAuthorAffiliationController.text = mainAuthor.affiliation;
+      _mainAuthorEmailController.text = mainAuthor.email ?? '';
+      _mainAuthorPhoneController.text = mainAuthor.phone ?? '';
+    } else if (abstract.author != null) {
+        // Fallback for legacy single string author
+        _mainAuthorNameController.text = abstract.author!;
+    }
+    
+    _coAuthors.clear();
+    for (final coAuthor in abstract.coAuthors) {
+        final fields = _CoAuthorFields();
+        fields.nameController.text = coAuthor.name;
+        fields.affiliationController.text = coAuthor.affiliation;
+        if (coAuthor.email != null) fields.emailController.text = coAuthor.email!;
+        if (coAuthor.phone != null) fields.phoneController.text = coAuthor.phone!;
+        _coAuthors.add(fields);
+    }
   }
 
   @override
@@ -156,6 +221,13 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
       return;
     }
 
+    if (_acceptedAbstract == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text('Error: Accepted abstract not found.')),
+        );
+        return;
+    }
+
     final Uint8List? bytes = _pickedFile!.bytes;
     if (bytes == null || bytes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -167,11 +239,11 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
     setState(() => _uploading = true);
 
     try {
-      // Get reference number first
-      final referenceNumber = await FirestoreService.getNextReferenceNumber();
+      // Use existing reference number from the accepted abstract
+      final referenceNumber = _acceptedAbstract!.referenceNumber;
 
-      // Upload PDF
-      final pdfUrl = await StorageService.uploadFullPaperPdf(
+      // Upload PDF to Cloudinary
+      final pdfUrl = await CloudinaryService.uploadFullPaperPdf(
         bytes: bytes,
         referenceNumber: referenceNumber,
       );
@@ -240,6 +312,88 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
 
   // ——— UI Components ———
 
+  Widget _buildLoadingState() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(color: Color(0xFF7C4DFF)),
+          SizedBox(height: 16),
+          Text(
+            'Checking eligibility...',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIneligibleState(Color accentColor) {
+    return Center(
+      child: FadeTransition(
+        opacity: _animationController,
+        child: Container(
+          padding: const EdgeInsets.all(40),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            color: const Color(0xFF1E1B4B).withOpacity(0.4),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.orange.withOpacity(0.15),
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  size: 48,
+                  color: Colors.orange,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Not Eligible for Full Paper Submission',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'You need to have an accepted abstract before you can submit a full paper.\n\n'
+                'Please submit your abstract first and wait for it to be reviewed and accepted.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white60,
+                      height: 1.5,
+                    ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.arrow_back_rounded),
+                label: const Text('Go Back'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accentColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Custom Indigo/Violet Dark Theme
@@ -296,10 +450,15 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
               child: ScrollConfiguration(
                 behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
                 child: Center(
-                  child: SizedBox(
-                     // Taking half of the horizontal space
-                    width: MediaQuery.of(context).size.width * 0.5,
-                    child: SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 700),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _checkingEligibility
+                        ? _buildLoadingState()
+                        : !_isEligible
+                            ? _buildIneligibleState(accentViolet)
+                            : SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: Form(
@@ -309,10 +468,33 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              // Show accepted abstract reference
+                              if (_acceptedAbstractRef != null)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 16),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.green.withOpacity(0.3)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          'Your abstract ($_acceptedAbstractRef) has been accepted. You can now submit your full paper.',
+                                          style: const TextStyle(color: Colors.green, fontSize: 14),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               const SizedBox(height: 10),
                               Center(
                                 child: Text(
-                                  'Submit Your Research',
+                                  'Submit Your Paper',
                                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
@@ -328,7 +510,8 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
                                       ),
                                 ),
                               ),
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 32),
+
 
                               // Paper Info
                               _buildGlassSection(
@@ -444,6 +627,7 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
                       ),
                     ),
                   ),
+                  ),
                 ),
               ),
             ),
@@ -527,68 +711,77 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
   }) {
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: nameCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: 'Full Name',
-                  prefixIcon: Icon(Icons.person_outline),
-                ),
-                validator: (v) => _validateRequired(v, 'Name'),
-              ),
+        _buildResponsiveFormRow(
+          TextFormField(
+            controller: nameCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              labelText: 'Full Name',
+              prefixIcon: Icon(Icons.person_outline),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: TextFormField(
-                controller: affCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: 'Affiliation',
-                  prefixIcon: Icon(Icons.business_outlined),
-                ),
-                validator: (v) => _validateRequired(v, 'Affiliation'),
-              ),
+            validator: (v) => _validateRequired(v, 'Name'),
+          ),
+          TextFormField(
+            controller: affCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              labelText: 'Affiliation',
+              prefixIcon: Icon(Icons.business_outlined),
             ),
-          ],
+            validator: (v) => _validateRequired(v, 'Affiliation'),
+          ),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: emailCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: isOptionalEmailPhone ? 'Email (Optional)' : 'Email',
-                  prefixIcon: const Icon(Icons.email_outlined),
-                ),
-                keyboardType: TextInputType.emailAddress,
-                validator: isOptionalEmailPhone
-                    ? (v) => v != null && v.isNotEmpty ? _validateEmail(v) : null
-                    : _validateEmail,
-              ),
+        _buildResponsiveFormRow(
+          TextFormField(
+            controller: emailCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: isOptionalEmailPhone ? 'Email (Optional)' : 'Email',
+              prefixIcon: const Icon(Icons.email_outlined),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: TextFormField(
-                controller: phoneCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: isOptionalEmailPhone ? 'Phone (Optional)' : 'Phone',
-                  prefixIcon: const Icon(Icons.phone_outlined),
-                ),
-                keyboardType: TextInputType.phone,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[\d\s\-\+\(\)]')),
-                ],
-                validator: isOptionalEmailPhone ? null : _validatePhone,
-              ),
+            keyboardType: TextInputType.emailAddress,
+            validator: isOptionalEmailPhone
+                ? (v) => v != null && v.isNotEmpty ? _validateEmail(v) : null
+                : _validateEmail,
+          ),
+          TextFormField(
+            controller: phoneCtrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: isOptionalEmailPhone ? 'Phone (Optional)' : 'Phone',
+              prefixIcon: const Icon(Icons.phone_outlined),
             ),
-          ],
+            keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[\d\s\-\+\(\)]')),
+            ],
+            validator: isOptionalEmailPhone ? null : _validatePhone,
+          ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildResponsiveFormRow(Widget first, Widget second) {
+    bool isMobile = MediaQuery.of(context).size.width <= 640;
+
+    if (isMobile) {
+      return Column(
+        children: [
+          first,
+          const SizedBox(height: 16),
+          second,
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: first),
+        const SizedBox(width: 16),
+        Expanded(child: second),
       ],
     );
   }
@@ -653,6 +846,8 @@ class _FullPaperSubmissionScreenState extends State<FullPaperSubmissionScreen> w
       ),
     );
   }
+
+
 }
 
 /// Helper class to manage co-author form controllers
